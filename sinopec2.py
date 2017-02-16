@@ -229,7 +229,6 @@ def command_line(index):		#多行合并成一行 a.log——>aa.log
 	fp_dest = open('port_' + index + '_1' + '.log', 'w')
 
 	oneline = fp_prt0.readline()
-	isbreak = 0 							#1：文件读取结束，跳出总循环
 	send_str = oneline_item()				#发送字符串
 	recv_str = oneline_item()				#接收字符串
 	is_send_firstline = 0					#发送首行
@@ -327,11 +326,44 @@ def command_line(index):		#多行合并成一行 a.log——>aa.log
 	fp_prt0.close()
 	fp_dest.close()
 
+def real_data(oneline):
+	string = oneline.split(',')
+	date = string[0] + ','
+	time = string[1] + ','
+	transfer = string[2] + ','
+	port = string[3] + ','
+	data1 = string[4].split(':')[0] + ':'
+	data2 = string[4].split(':')[1]
+	data_id = data2[25:27]
+
+	if data2[19:24] == '31 02':
+		operate1 = operate2 = ''
+		if data_id == '01':		#A卡插入
+			operate1 = date + time + transfer + port + data1 + data2[:13] + '00 21 31 01 01 ' + data2[28:82] + '01 02\n'
+			data_id2 = data2[82:84]
+			if data_id2 == '01':	#B卡插入
+				operate2 = date + time + transfer + port + data1 + data2[:13] + '00 21 31 01 01 '+ data2[85:139] + '02 02\n'
+			if data_id2 == '02':	#B加油中
+				operate2 = date + time + transfer + port + data1 + data2[:13] + '00 13 31 01 02 '+ data2[85:115] + '02 02\n'
+				
+			return operate1 + operate2
+
+		if data_id == '02':		#A卡加油
+			operate1 = date + time + transfer + port + data1 + data2[:13] + '00 21 31 01 02 ' + data2[28:58] + '01 02\n'
+			data_id2 = data2[58:60]
+			if data_id2 == '01':	#B卡插入
+				operate2 = date + time + transfer + port + data1 + data2[:13] + '00 21 31 01 01 '+ data2[61:115] + '02 02\n'
+			if data_id2 == '02':	#B加油中
+				operate2 = date + time + transfer + port + data1 + data2[:13] + '00 13 31 01 02 '+ data2[61:91] + '02 02\n'
+				
+			return operate1 + operate2
+
+	return oneline
+
 def check_line():
 	pattern2 = re.compile(r'data: FA')
 	regex = re.compile(r'FA FA')
 	errorfile = open('error.log', 'w')
-
 	
 	for index in range(len(port_string)):
 		sourcefile = open('port_' + port_string[index] + '_1' + '.log', 'r')
@@ -350,8 +382,9 @@ def check_line():
 		while oneline:
 			match2 = pattern2.search(oneline)
 			if match2:
-				result, number = re.subn(regex, 'FA', oneline) #替换所有的FA FA
-				filename.write(result)
+				result, number = re.subn(regex, 'FA', oneline) 	#替换所有的FA FA
+												#对2条实时信息数据的处理，1行变2行
+				filename.write(real_data(result))
 			oneline = sourcefile.readline()
 			if First_line: #第一行
 				if time_span(a.time, '00:00:00') > 6:	#时间相差超过6秒
@@ -440,7 +473,6 @@ def case320(data):				#加油机发送成交数据
 	if bcd_decimal(data[13:18], 0) < 96 :
 		return 'data error\n'
 	operate = ''
-	data_list = data.split(' ')
 	operate = '枪号：' + hex_decimal(data[223:225], 0) + ',POS-TTC：' + hex_decimal(data[22:33], 0)  + ',交易时间：' + data[37:57] + ',交易类型：' + trade_type(data[34:36]) + ',卡号：' + data[58:87] + ',余额：' + hex_decimal(data[88:99],2) + ',金额：' + hex_decimal(data[100:108],2) + ',单价：' + hex_decimal(data[241:246],2) + ',升数：' + hex_decimal(data[232:240],2) + ',油品：' + data[226:231] + ',升累计：' + hex_decimal(data[250:261],2) + '\n'	
 	return operate
 
@@ -509,7 +541,6 @@ def case340(data):				#P加油机申请下载数据
 			return '命令字: ' + data_list[7] + '（加油机向PC机申请下载程序）' + ';段偏移：' + offset + ';段数：' + seg + '\n'
 
 def case350(data):				#加油机申请解灰
-	length = len(data.split(' ')) - 1
 	if bcd_decimal(data[13:18], 0) < 25:
 		return 'length error\n'
 	else:
@@ -802,7 +833,7 @@ def case3A1(data):				#PC机读取加油机信息
 	return '命令字: ' +  data[19:21] + '（PC机读取加油机信息）\n'
 
 def case3E(data):				#PC机主动读取加油记录
-	data_list = data.split(' ')
+	
 	return '命令字: ' +  data[19:21] + '（PC机主动读取加油记录）' + ';POS-TTC：' + data[22:-7] + '\n'
 
 def cmd0(command, data):		#油机发送
@@ -924,8 +955,8 @@ def analyze_line(oneline):
 def analyze():
 	for index in range(len(port_string)):
 		print 'port: ' + port_string[index] + ' will be handled with'
-		sourcefile = open('port_' + port_string[index] + '.log', 'r')	#源文件port_0.log
-		filename = open('port_' + port_string[index] + '_1' + '.log', 'w')	#解析后的日志port_0_1.log
+		sourcefile = open('port_' + port_string[index] + '.log', 'r')	#源文件a.log
+		filename = open('port_' + port_string[index] + '_1' + '.log', 'w')	#解析后的日志aa.log
 		oneline = sourcefile.readline()
 		while oneline:
 			#print 'oneline = ', oneline
@@ -1007,14 +1038,11 @@ def analyze_transaction():						#分析交易数据
 	
 	trade_file1.close()	
 	trade_file2.close()
-	
-	
-	
+		
 def ttc_excle():
 	header = ['Port', 'Nozzle', 'POS-TTC', 'PC-Time', 'Oil-Time', 'Card', 'T-Type', 'Balance', 'Liter', 'Unit', 'Amount', 'Total', 'G-Code']
 	fp_src = open('transaction1.log', 'r')
 	oneline = fp_src.readline()
-	style = XFStyle()
 	wb = Workbook()
 			
 	col = 0
@@ -1099,7 +1127,7 @@ def report():
 def readme():
 	fp = open('readme.txt', 'w')
 	fp.write('*' * 60 + '\n\nReadme: \n')
-	fp.write('Version: 1.0.0.4\n')
+	fp.write('Version: 1.0.0.4-2\n')
 	fp.write( 'port_a.log: 按端口号分类的文件（a为端口号）\n')
 	fp.write( 'port_a_1.log: port_a.log解析后的文件（a为端口号）\n')
 	fp.write( 'transaction1.log: 所有的交易数据\n')
@@ -1158,7 +1186,6 @@ def main():
 	print 'transaction2.log: all the transactions data that have been analyzed\n'
 	print 'TTC****.xls: transaction data that has been exportd into .xls format\n'
 	print '*' * 60 
-
 
 if __name__ == '__main__':
 	main()
