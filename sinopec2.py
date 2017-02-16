@@ -1,3 +1,4 @@
+#!D:\Python\Python27\python.exe
 #-*- coding: utf-8 -*-
 from __future__ import division
 from xlwt.Workbook import *
@@ -1040,7 +1041,7 @@ def analyze_transaction():						#分析交易数据
 	trade_file2.close()
 		
 def ttc_excle():
-	header = ['Port', 'Nozzle', 'POS-TTC', 'PC-Time', 'Oil-Time', 'Card', 'T-Type', 'Balance', 'Liter', 'Unit', 'Amount', 'Total', 'G-Code']
+	header = ['Port', 'Nozzle', 'POS-TTC', 'PSAM-TTC', 'PC-Time', 'Oil-Time', 'Card', 'T-Type', 'Balance', 'Liter', 'Unit', 'Amount', 'Total', 'G-Code']
 	fp_src = open('transaction1.log', 'r')
 	oneline = fp_src.readline()
 	wb = Workbook()
@@ -1067,6 +1068,7 @@ def ttc_excle():
 			Port = oneline.split(',')[3].split(':')[1]
 			Nozzle =  hex_decimal(data[223:225], 0)		#枪号
 			TTC = hex_decimal(data[22:33], 0)
+			PSAM_TTC = hex_decimal(data[199:210], 0)
 			year = ''.join(data[37:42].split(' ')) + ' '
 			date = '-'.join(data[43:48].split(' ')) + ' '
 			time = ':'.join(data[49:57].split(' '))
@@ -1084,6 +1086,7 @@ def ttc_excle():
 			trade.append(Port)
 			trade.append(Nozzle)		#构造交易数据列表
 			trade.append(TTC)
+			trade.append(PSAM_TTC)
 			trade.append(PC_Time)
 			trade.append(Oil_Time)
 			trade.append(Card)
@@ -1139,6 +1142,42 @@ def readme():
 	
 	shutil.copy('readme.txt', './report')
 	os.remove('readme.txt')
+
+def remove30(port):		#过滤文件，删除所有的30
+	fp_src = open(port, 'r')
+	if fp_src:
+		#print 'open source file success'
+		fp_dest = open(port.split('.')[0]+'_min.log', 'w')
+	else:
+		print 'open source file fail'
+
+	oneline = fp_src.readline()
+
+	while oneline:
+		#print oneline
+		
+		a = oneline_item()
+		string = oneline.split(',')
+		a.port = string[3]
+		a.data = string[4].split(':')[1]
+		command = a.data.split(' ')[7]
+		length_high = a.data.split(' ')[5]
+		length_low = a.data.split(' ')[6]
+		#print 'aaaa'+command+'aaaa\n'
+		
+		if command != '30':		#不是轮询数据
+			if (length_high != '00') | (length_low != '02') | (command != '31'):
+				fp_dest.write(oneline)
+		oneline = fp_src.readline()
+		if oneline:
+			continue
+		else:
+			break
+		
+	fp_src.close()
+	fp_dest.close()
+	print 'Remove 30 data from ' + port + ' finished.\n'
+		
 	
 def main():
 
@@ -1147,33 +1186,44 @@ def main():
 		print 'Usage: ' + command + ' file.log'
 		sys.exit()
 		
-	version = 'Version: 1.0.0.3'
-	print '\n****** Analyze sinopec log file ******\n' + version
+	version = 'Version: 1.0.0.5\n'
+	print 'New feature: remove all "30 data" and "00 02 31 00 data"\n'
+	print '****** Analyze sinopec log file ******\n' + version
 	print 'getting the port list...'
 	port_list()
 
 	print 'Trans Log files to port_file...'
-	sort_port()
+	sort_port()							#20120102.log -> port_0.log
 	
 	print 'Multiple lines merged into a single line...'
 	for i in range(len(port_string)):
 		print 'will be read next file...'
-		command_line(port_string[i])
+		command_line(port_string[i])	#port_0.log -> port_0_1.log
 
 	print 'will be check the start of the line again'
 	
-	check_line()
+	check_line()						#port_0_1.log -> port_0.log
+	
+	print 'Removing all "30" | "00 02 31 00" data line...\n'
+	for index in range(len(port_string)):
+		#print 'Removing all "30" | "00 02 31 00"\n'
+		remove30('port_' + port_string[index] + '.log')#port_0.log -> port_0_min.log
+		os.remove('port_' + port_string[index] + '.log')
+		shutil.copy('port_' + port_string[index] + '_min.log', 'port_' + port_string[index] + '.log')
+		os.remove('port_' + port_string[index] + '_min.log')
+	print 'Removing all "30" | "00 02 31 00, finished."\n'
+		
 
-	analyze()
+	analyze()							#源文件：port_0.log；解析后的文件：port_0_1.log
 
 	print 'analyze_transaction ...'
-	analyze_transaction()
+	analyze_transaction()				#原始交易数据：transaction1.log；解析后的交易数据：transaction2.log
 
 	print 'save trade to excel...'
-	ttc_excle()
+	ttc_excle()							#生成交易报表 TTC_20120102.xls
 	
 	print 'waiting to move files to report folder...'
-	report()
+	report()							#拷贝报表文件到 report 目录
 
 	print 'Analyze log file finished'
 

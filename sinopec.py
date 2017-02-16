@@ -924,8 +924,8 @@ def analyze_line(oneline):
 def analyze():
 	for index in range(len(port_string)):
 		print 'port: ' + port_string[index] + ' will be handled with'
-		sourcefile = open('port_' + port_string[index] + '.log', 'r')	#源文件port_0.log
-		filename = open('port_' + port_string[index] + '_1' + '.log', 'w')	#解析后的日志port_0_1.log
+		sourcefile = open('port_' + port_string[index] + '.log', 'r')	#源文件a.log
+		filename = open('port_' + port_string[index] + '_1' + '.log', 'w')	#解析后的日志aa.log
 		oneline = sourcefile.readline()
 		while oneline:
 			#print 'oneline = ', oneline
@@ -1011,7 +1011,7 @@ def analyze_transaction():						#分析交易数据
 	
 	
 def ttc_excle():
-	header = ['Port', 'Nozzle', 'POS-TTC', 'PC-Time', 'Oil-Time', 'Card', 'T-Type', 'Balance', 'Liter', 'Unit', 'Amount', 'Total', 'G-Code']
+	header = ['Port', 'Nozzle', 'POS-TTC', 'PSAM-TTC', 'PC-Time', 'Oil-Time', 'Card', 'T-Type', 'Balance', 'Liter', 'Unit', 'Amount', 'Total', 'G-Code']
 	fp_src = open('transaction1.log', 'r')
 	oneline = fp_src.readline()
 	style = XFStyle()
@@ -1039,6 +1039,7 @@ def ttc_excle():
 			Port = oneline.split(',')[3].split(':')[1]
 			Nozzle =  hex_decimal(data[223:225], 0)		#枪号
 			TTC = hex_decimal(data[22:33], 0)
+			PSAM_TTC = hex_decimal(data[199:210], 0)
 			year = ''.join(data[37:42].split(' ')) + ' '
 			date = '-'.join(data[43:48].split(' ')) + ' '
 			time = ':'.join(data[49:57].split(' '))
@@ -1056,6 +1057,7 @@ def ttc_excle():
 			trade.append(Port)
 			trade.append(Nozzle)		#构造交易数据列表
 			trade.append(TTC)
+			trade.append(PSAM_TTC)
 			trade.append(PC_Time)
 			trade.append(Oil_Time)
 			trade.append(Card)
@@ -1112,6 +1114,41 @@ def readme():
 	shutil.copy('readme.txt', './report')
 	os.remove('readme.txt')
 	
+def remove30(port):		#过滤文件，删除所有的30
+	fp_src = open(port, 'r')
+	if fp_src:
+		#print 'open source file success'
+		fp_dest = open(port.split('.')[0]+'_min.log', 'w')
+	else:
+		print 'open source file fail'
+
+	oneline = fp_src.readline()
+
+	while oneline:
+		#print oneline
+		
+		a = oneline_item()
+		string = oneline.split(',')
+		a.port = string[3]
+		a.data = string[4].split(':')[1]
+		command = a.data.split(' ')[7]
+		length_high = a.data.split(' ')[5]
+		length_low = a.data.split(' ')[6]
+		#print 'aaaa'+command+'aaaa\n'
+		
+		if command != '30':		#不是轮询数据
+			if (length_high != '00') | (length_low != '02') | (command != '31'):
+				fp_dest.write(oneline)
+		oneline = fp_src.readline()
+		if oneline:
+			continue
+		else:
+			break
+		
+	fp_src.close()
+	fp_dest.close()
+	print 'Remove 30 data from ' + port + ' finished.\n'
+			
 def main():
 
 	if len(sys.argv) != 2:
@@ -1119,7 +1156,7 @@ def main():
 		print 'Usage: ' + command + ' file.log'
 		sys.exit()
 		
-	version = 'Version: 1.0.0.3'
+	version = 'Version: 1.0.0.5'
 	print '\n****** Analyze sinopec log file ******\n' + version
 	print 'getting the port list...'
 	port_list()
@@ -1136,6 +1173,15 @@ def main():
 	
 	check_line()
 
+	print 'Removing all "30" | "00 02 31 00" data line...\n'
+	for index in range(len(port_string)):
+		#print 'Removing all "30" | "00 02 31 00"\n'
+		remove30('port_' + port_string[index] + '.log')#port_0.log -> port_0_min.log
+		os.remove('port_' + port_string[index] + '.log')
+		shutil.copy('port_' + port_string[index] + '_min.log', 'port_' + port_string[index] + '.log')
+		os.remove('port_' + port_string[index] + '_min.log')
+	print 'Removing all "30" | "00 02 31 00, finished."\n'
+	
 	analyze()
 
 	print 'analyze_transaction ...'
